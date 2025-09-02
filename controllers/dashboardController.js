@@ -17,8 +17,21 @@ const getHomeData = async (req, res) => {
       { $group: { _id: null, qty: { $sum: "$quantity" } } },
     ]);
 
+    const cancelledCount = await Invoice.countDocuments({ status: "Unpaid" });
+    const returnCount = await Order.countDocuments({ qty: { $lte: 0 } });
+
+    // Orders placed but product not yet delivered (simulate "to be received")
+    const toBeReceivedAgg = await Order.aggregate([
+      { $group: { _id: null, qty: { $sum: "$qty" } } },
+    ]);
+    const toBeReceived = toBeReceivedAgg[0]?.qty || 0;
+
+    // Product summary
+    const suppliers = await Product.distinct("createdBy");
+    const categories = await Product.distinct("category");
+
     const revenueTotal = revenue[0]?.total || 0;
-    const profit = revenueTotal * 0.25; // example
+    const profit = revenueTotal * 0.25; 
     const cost = revenueTotal * 0.75;
 
     res.json({
@@ -31,16 +44,16 @@ const getHomeData = async (req, res) => {
       purchaseOverview: {
         purchase: totalPurchase,
         cost,
-        cancel: 5,
-        return: 2,
+        cancel: cancelledCount,
+        return: returnCount,
       },
       inventorySummary: {
         qtyInHand: totalStock[0]?.qty || 0,
-        toBeReceived: 50,
+        toBeReceived,
       },
       productSummary: {
-        suppliers: 8,
-        categories: 12,
+        suppliers: suppliers.length,
+        categories: categories.length,
       },
     });
   } catch (err) {
@@ -52,10 +65,24 @@ const getHomeData = async (req, res) => {
 // Statistics Page Data
 const getStatisticsData = async (req, res) => {
   try {
-    // In real app, compute from DB
-    const totalRevenue = 52000;
-    const productsSold = 320;
-    const productsInStock = 780;
+    // --- Total Revenue ---
+    const revenueAgg = await Invoice.aggregate([
+      { $group: { _id: null, total: { $sum: "$amount" } } }
+    ]);
+    const totalRevenue = revenueAgg[0]?.total || 0;
+
+    // --- Products Sold (sum of all quantities in invoices) ---
+    const soldAgg = await Invoice.aggregate([
+      { $unwind: "$products" },
+      { $group: { _id: null, qty: { $sum: "$products.qty" } } }
+    ]);
+    const productsSold = soldAgg[0]?.qty || 0;
+
+   // --- Products in Stock (current stock in inventory) ---
+    const stockAgg = await Product.aggregate([
+      { $group: { _id: null, qty: { $sum: "$quantity" } } }
+    ]);
+    const productsInStock = stockAgg[0]?.qty || 0;
 
     res.json({
       totalRevenue: { value: totalRevenue, change: "+12%" },
