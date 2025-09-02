@@ -4,7 +4,7 @@ It provides REST APIs for **authentication, product management, invoices, statis
 **Setup Instructions:
 
 Clone the Repository: 
-- git clone https://github.com/ankitakosare1/form-builder-backend.git 
+- git clone https://github.com/ankitakosare1/Inventory-Management-backend.git 
 - cd server
 
 Install Dependencies: npm install
@@ -14,7 +14,7 @@ Configure Environment Variables:
 - JWT_SECRET=<your-secret>
 - EMAIL_USER=<your-email>
 - EMAIL_PASS=<your-app-password>
-- FRONTEND_URL=https://form-builder-frontend.netlify.app/
+- FRONTEND_URL=inventory-management-front.netlify.app
 
 Run: npm start
 
