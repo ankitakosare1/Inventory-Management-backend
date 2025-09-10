@@ -1,6 +1,7 @@
 const Invoice = require("../models/invoice.js");
 const Product = require("../models/product.js");
 const Order = require("../models/order.js");
+const DashboardLayout = require("../models/dashboardLayout.js");
 
 // Home Dashboard Data
 const getHomeData = async (req, res) => {
@@ -211,21 +212,78 @@ const getChartData = async (req, res) => {
 module.exports = { getChartData };
 
 
-// Top Products
+// Top Products (based on sales qty)
 const getTopProducts = async (req, res) => {
   try {
-    const products = await Product.find().limit(3);
+    const top = await Invoice.aggregate([
+      { $unwind: "$products" }, // break array into individual product entries
+      {
+        $group: {
+          _id: "$products.product",        // group by product ID
+          totalQty: { $sum: "$products.qty" },   // total qty sold
+          totalRevenue: { $sum: { $multiply: ["$products.qty", "$products.price"] } }
+        }
+      },
+      { $sort: { totalQty: -1 } }, // sort by sold qty (descending)
+      { $limit: 3 }                // top 3
+    ]);
 
-    res.json(
-      products.map((p) => ({
-        id: p._id,
-        name: p.name,
-        image: p.image || null,
-      }))
-    );
+    // populate product details
+    const productIds = top.map(t => t._id);
+    const products = await Product.find({ _id: { $in: productIds } })
+      .select("name imageUrl")
+      .lean();
+
+    // map back with sales info
+    const result = top.map(t => {
+      const p = products.find(p => p._id.toString() === t._id.toString());
+      return {
+        id: t._id,
+        name: p?.name || "Unknown",
+        image: p?.imageUrl || null,
+        totalQty: t.totalQty,
+        totalRevenue: t.totalRevenue
+      };
+    });
+
+    res.json(result);
   } catch (err) {
     console.error("Error in getTopProducts:", err);
     res.status(500).json({ message: "Failed to fetch top products" });
+  }
+};
+
+// Get user layout
+const getDashboardLayout = async (req, res) => {
+  try {
+    const layout = await DashboardLayout.findOne({ user: req.user._id });
+    if (!layout) {
+      // if not exist → create default
+      const newLayout = await DashboardLayout.create({
+        user: req.user._id,
+      });
+      return res.json(newLayout);
+    }
+    res.json(layout);
+  } catch (err) {
+    console.error("Error in getDashboardLayout:", err);
+    res.status(500).json({ message: "Failed to fetch dashboard layout" });
+  }
+};
+
+// Save/update layout
+const saveDashboardLayout = async (req, res) => {
+  try {
+    const { groupA, groupB } = req.body;
+    const layout = await DashboardLayout.findOneAndUpdate(
+      { user: req.user._id },
+      { groupA, groupB },
+      { new: true, upsert: true }
+    );
+    res.json(layout);
+  } catch (err) {
+    console.error("Error in saveDashboardLayout:", err);
+    res.status(500).json({ message: "Failed to save dashboard layout" });
   }
 };
 
@@ -234,4 +292,6 @@ module.exports = {
   getStatisticsData,
   getChartData,
   getTopProducts,
+  getDashboardLayout,
+  saveDashboardLayout
 };
